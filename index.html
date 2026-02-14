@@ -208,6 +208,9 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.shadowMap.enabled = true;
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
         document.getElementById('canvas-container').appendChild(renderer.domElement);
 
         // Controls (fallback)
@@ -218,18 +221,22 @@
         controls.enablePan = false;
         controls.enabled = false; // Disabled until gyro is off
 
-        // Lights
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        // Lights - brightened for texture visibility
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
         scene.add(ambientLight);
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
         directionalLight.position.set(10, 10, 10);
         directionalLight.castShadow = true;
         scene.add(directionalLight);
 
-        const fillLight = new THREE.DirectionalLight(0x8888ff, 0.3);
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.5);
         fillLight.position.set(-10, 0, -10);
         scene.add(fillLight);
+
+        const backLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        backLight.position.set(0, 10, -10);
+        scene.add(backLight);
 
         // State
         let currentModel = null;
@@ -269,6 +276,15 @@
                     if (child.isMesh) {
                         child.castShadow = true;
                         child.receiveShadow = true;
+                        
+                        // Ensure textures are rendered correctly
+                        if (child.material) {
+                            child.material.needsUpdate = true;
+                            if (child.material.map) {
+                                child.material.map.needsUpdate = true;
+                                child.material.map.encoding = THREE.sRGBEncoding;
+                            }
+                        }
                     }
                 });
                 
