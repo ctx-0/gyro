@@ -22,8 +22,8 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 controls.enableZoom = true;
-controls.enablePan = false;
-controls.enabled = false;
+controls.enablePan = true;
+controls.enabled = true;
 
 // Lights
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
@@ -210,14 +210,12 @@ async function toggleSensor() {
         sensorBtn.classList.remove('active');
         sensorStatus.textContent = `${sensorMode}: paused`;
         sensorData.classList.remove('active');
-        controls.enabled = true;
     } else {
         const success = await initSensor();
         if (success) {
             sensorEnabled = true;
             sensorBtn.classList.add('active');
             sensorData.classList.add('active');
-            controls.enabled = false;
         }
     }
 }
