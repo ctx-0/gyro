@@ -50,8 +50,6 @@ let activeSensor = null;
 
 // Gyroscope values
 let rotationX = 0, rotationY = 0, rotationZ = 0;
-let smoothX = 0, smoothY = 0, smoothZ = 0;
-const smoothingFactor = 0.15;
 
 // Absolute orientation quaternion
 const targetQuaternion = new THREE.Quaternion();
@@ -117,23 +115,15 @@ async function initGyroscope() {
         activeSensor = new Gyroscope({ frequency: 60 });
         
         activeSensor.addEventListener('reading', () => {
-            smoothX += (activeSensor.x - smoothX) * smoothingFactor;
-            smoothY += (activeSensor.y - smoothY) * smoothingFactor;
-            smoothZ += (activeSensor.z - smoothZ) * smoothingFactor;
-            
-            const deadZone = 0.02;
-            const dx = Math.abs(smoothX) > deadZone ? smoothX : 0;
-            const dy = Math.abs(smoothY) > deadZone ? smoothY : 0;
-            const dz = Math.abs(smoothZ) > deadZone ? smoothZ : 0;
-            
+            // Direct integration of gyroscope values
             const sensitivity = 1.5;
-            rotationX += dx * sensitivity;
-            rotationY += dy * sensitivity;
-            rotationZ += dz * sensitivity;
+            rotationX += activeSensor.x * sensitivity;
+            rotationY += activeSensor.y * sensitivity;
+            rotationZ += activeSensor.z * sensitivity;
             
-            valX.textContent = smoothX.toFixed(3);
-            valY.textContent = smoothY.toFixed(3);
-            valZ.textContent = smoothZ.toFixed(3);
+            valX.textContent = activeSensor.x.toFixed(3);
+            valY.textContent = activeSensor.y.toFixed(3);
+            valZ.textContent = activeSensor.z.toFixed(3);
         });
 
         activeSensor.addEventListener('error', (event) => {
@@ -244,7 +234,6 @@ async function switchMode(mode) {
     
     // Reset rotation values
     rotationX = rotationY = rotationZ = 0;
-    smoothX = smoothY = smoothZ = 0;
     
     // Restart sensor if active
     if (sensorEnabled) {
@@ -299,7 +288,6 @@ modeAbs.addEventListener('click', () => switchMode('absolute'));
 // Reset
 document.getElementById('resetBtn').addEventListener('click', () => {
     rotationX = rotationY = rotationZ = 0;
-    smoothX = smoothY = smoothZ = 0;
     targetQuaternion.set(0, 0, 0, 1);
     currentQuaternion.set(0, 0, 0, 1);
     
