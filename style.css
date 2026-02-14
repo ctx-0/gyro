@@ -225,3 +225,29 @@ html, body {
 #model-source a:hover {
     color: rgba(255,255,255,0.5);
 }
+
+#repo-link {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.35);
+    text-decoration: none;
+    transition: color 0.2s, opacity 0.2s;
+    opacity: 0.7;
+}
+
+#repo-link:hover {
+    color: rgba(255,255,255,0.6);
+    opacity: 1;
+}
+
+#repo-link svg {
+    width: 14px;
+    height: 14px;
+    fill: #fff;
+}
