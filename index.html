@@ -243,10 +243,10 @@
         let gyroEnabled = false;
         let gyroscope = null;
         
-        // Sensor values
-        let rotationX = 0;
-        let rotationY = 0;
-        let rotationZ = 0;
+        // Sensor values with smoothing
+        let rotationX = 0, rotationY = 0, rotationZ = 0;
+        let smoothX = 0, smoothY = 0, smoothZ = 0;
+        const smoothingFactor = 0.15; // Lower = smoother but more lag
 
         // UI elements
         const gyroBtn = document.getElementById('gyroBtn');
@@ -319,17 +319,27 @@
                 gyroscope = new Gyroscope({ frequency: 60 });
                 
                 gyroscope.addEventListener('reading', () => {
-                    // gyroscope.x, y, z are in radians per second
-                    const sensitivity = 2.0; // Adjust for responsiveness
+                    // Low-pass filter for noise reduction
+                    smoothX += (gyroscope.x - smoothX) * smoothingFactor;
+                    smoothY += (gyroscope.y - smoothY) * smoothingFactor;
+                    smoothZ += (gyroscope.z - smoothZ) * smoothingFactor;
                     
-                    rotationX += gyroscope.x * sensitivity;
-                    rotationY += gyroscope.y * sensitivity;
-                    rotationZ += gyroscope.z * sensitivity;
+                    // Dead zone - ignore tiny movements
+                    const deadZone = 0.02;
+                    const dx = Math.abs(smoothX) > deadZone ? smoothX : 0;
+                    const dy = Math.abs(smoothY) > deadZone ? smoothY : 0;
+                    const dz = Math.abs(smoothZ) > deadZone ? smoothZ : 0;
+                    
+                    // Integrate for rotation
+                    const sensitivity = 1.5;
+                    rotationX += dx * sensitivity;
+                    rotationY += dy * sensitivity;
+                    rotationZ += dz * sensitivity;
                     
                     // Update UI
-                    valX.textContent = gyroscope.x.toFixed(3);
-                    valY.textContent = gyroscope.y.toFixed(3);
-                    valZ.textContent = gyroscope.z.toFixed(3);
+                    valX.textContent = smoothX.toFixed(3);
+                    valY.textContent = smoothY.toFixed(3);
+                    valZ.textContent = smoothZ.toFixed(3);
                 });
 
                 gyroscope.addEventListener('error', (event) => {
