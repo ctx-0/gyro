@@ -180,6 +180,25 @@
             letter-spacing: 1px;
             text-transform: uppercase;
         }
+        #model-source {
+            position: fixed;
+            bottom: 10px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 10px;
+            color: rgba(255,255,255,0.2);
+            pointer-events: auto;
+            z-index: 100;
+        }
+        #model-source a {
+            color: rgba(255,255,255,0.3);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        #model-source a:hover {
+            color: rgba(255,255,255,0.5);
+        }
         .axis-label {
             display: inline-block;
             width: 14px;
@@ -218,6 +237,10 @@
         <h1>Sensor API Demo</h1>
         <p>Generic Sensor API with Gyroscope & AbsoluteOrientationSensor</p>
         <button id="start-btn">Enable Sensors</button>
+    </div>
+    
+    <div id="model-source">
+        Model - <a href="https://3d.nicovideo.jp/users/924315" target="_blank" rel="noopener">bottiボーン無し</a>
     </div>
 
     <script type="importmap">
