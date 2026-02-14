@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Gyroscope Sensor Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #0a0a0a;
+            touch-action: none;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+        }
+        #controls {
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            z-index: 100;
+            padding: 6px;
+            background: rgba(0,0,0,0.4);
+            border-radius: 20px;
+            backdrop-filter: blur(12px);
+        }
+        .btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: transparent;
+            color: rgba(255,255,255,0.5);
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .btn:active {
+            transform: scale(0.92);
+            background: rgba(255,255,255,0.08);
+        }
+        .btn.active {
+            background: rgba(255,255,255,0.12);
+            border-color: rgba(255,255,255,0.25);
+            color: #fff;
+        }
+        #sensor-overlay {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            z-index: 100;
+            pointer-events: none;
+        }
+        #sensor-status {
+            display: inline-block;
+            padding: 8px 14px;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(8px);
+            border-radius: 8px;
+            color: rgba(255,255,255,0.6);
+            font-size: 12px;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        #sensor-data {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 11px;
+            color: rgba(255,255,255,0.4);
+            line-height: 1.6;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        #sensor-data.active {
+            opacity: 1;
+        }
+        #start-prompt {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            transition: opacity 0.4s, visibility 0.4s;
+        }
+        #start-prompt.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+        #start-prompt h1 {
+            color: #fff;
+            font-size: 20px;
+            font-weight: 500;
+            margin-bottom: 12px;
+            letter-spacing: 0.5px;
+        }
+        #start-prompt p {
+            color: rgba(255,255,255,0.5);
+            font-size: 14px;
+            margin-bottom: 28px;
+            text-align: center;
+            padding: 0 40px;
+        }
+        #start-btn {
+            padding: 14px 32px;
+            background: #fff;
+            color: #000;
+            border: none;
+            border-radius: 24px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+        #start-btn:active {
+            transform: scale(0.96);
+            opacity: 0.8;
+        }
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255,255,255,0.4);
+            font-size: 13px;
+            pointer-events: none;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        .axis-label {
+            display: inline-block;
+            width: 14px;
+            color: #ff6b6b;
+        }
+        .axis-label.y { color: #4ade80; }
+        .axis-label.z { color: #60a5fa; }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="sensor-overlay">
+        <div id="sensor-status">sensor: standby</div>
+        <div id="sensor-data">
+            <span class="axis-label">x</span> <span id="val-x">0.00</span> rad/s<br>
+            <span class="axis-label y">y</span> <span id="val-y">0.00</span> rad/s<br>
+            <span class="axis-label z">z</span> <span id="val-z">0.00</span> rad/s
+        </div>
+    </div>
+    
+    <div id="loading">loading</div>
+    
+    <div id="controls">
+        <button class="btn active" id="gyroBtn">📡</button>
+        <button class="btn" id="resetBtn">↺</button>
+    </div>
+    
+    <div id="start-prompt">
+        <h1>Gyroscope Sensor Demo</h1>
+        <p>Uses the Generic Sensor API to control 3D rotation with device movement</p>
+        <button id="start-btn">Enable Sensors</button>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a0a);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 50);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // Controls (fallback)
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.enableZoom = true;
+        controls.enablePan = false;
+        controls.enabled = false; // Disabled until gyro is off
+
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(10, 10, 10);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+
+        const fillLight = new THREE.DirectionalLight(0x8888ff, 0.3);
+        fillLight.position.set(-10, 0, -10);
+        scene.add(fillLight);
+
+        // State
+        let currentModel = null;
+        let gyroEnabled = false;
+        let gyroscope = null;
+        
+        // Sensor values
+        let rotationX = 0;
+        let rotationY = 0;
+        let rotationZ = 0;
+
+        // UI elements
+        const gyroBtn = document.getElementById('gyroBtn');
+        const sensorStatus = document.getElementById('sensor-status');
+        const sensorData = document.getElementById('sensor-data');
+        const valX = document.getElementById('val-x');
+        const valY = document.getElementById('val-y');
+        const valZ = document.getElementById('val-z');
+
+        // Load model
+        const fbxLoader = new FBXLoader();
+        fbxLoader.load(
+            'bottiボーン無し.fbx',
+            (object) => {
+                document.getElementById('loading').style.display = 'none';
+                
+                const box = new THREE.Box3().setFromObject(object);
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const scale = 20 / maxDim;
+                object.scale.setScalar(scale);
+                
+                const center = box.getCenter(new THREE.Vector3());
+                object.position.sub(center.multiplyScalar(scale));
+                
+                object.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+                
+                scene.add(object);
+                currentModel = object;
+            },
+            undefined,
+            (error) => {
+                document.getElementById('loading').textContent = 'error';
+            }
+        );
+
+        // Initialize Gyroscope using Generic Sensor API
+        async function initGyroscope() {
+            if (!('Gyroscope' in window)) {
+                sensorStatus.textContent = 'sensor: not supported';
+                return false;
+            }
+
+            try {
+                // Request permission if needed (iOS 13+)
+                if (typeof DeviceOrientationEvent !== 'undefined' && 
+                    typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission !== 'granted') {
+                        sensorStatus.textContent = 'sensor: permission denied';
+                        return false;
+                    }
+                }
+
+                // Create gyroscope with 60Hz frequency
+                gyroscope = new Gyroscope({ frequency: 60 });
+                
+                gyroscope.addEventListener('reading', () => {
+                    // gyroscope.x, y, z are in radians per second
+                    const sensitivity = 2.0; // Adjust for responsiveness
+                    
+                    rotationX += gyroscope.x * sensitivity;
+                    rotationY += gyroscope.y * sensitivity;
+                    rotationZ += gyroscope.z * sensitivity;
+                    
+                    // Update UI
+                    valX.textContent = gyroscope.x.toFixed(3);
+                    valY.textContent = gyroscope.y.toFixed(3);
+                    valZ.textContent = gyroscope.z.toFixed(3);
+                });
+
+                gyroscope.addEventListener('error', (event) => {
+                    sensorStatus.textContent = `sensor: error (${event.error.name})`;
+                });
+
+                await gyroscope.start();
+                return true;
+            } catch (error) {
+                sensorStatus.textContent = `sensor: ${error.name}`;
+                console.error('Gyroscope error:', error);
+                return false;
+            }
+        }
+
+        // Stop gyroscope
+        function stopGyroscope() {
+            if (gyroscope) {
+                gyroscope.stop();
+            }
+        }
+
+        // Toggle gyroscope
+        async function toggleGyroscope() {
+            if (gyroEnabled) {
+                stopGyroscope();
+                gyroEnabled = false;
+                gyroBtn.classList.remove('active');
+                sensorStatus.textContent = 'sensor: paused';
+                sensorData.classList.remove('active');
+                controls.enabled = true;
+            } else {
+                const success = await initGyroscope();
+                if (success) {
+                    gyroEnabled = true;
+                    gyroBtn.classList.add('active');
+                    sensorStatus.textContent = 'sensor: active';
+                    sensorData.classList.add('active');
+                    controls.enabled = false;
+                }
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (currentModel && gyroEnabled) {
+                // Apply gyroscope rotation to model
+                currentModel.rotation.x = rotationX;
+                currentModel.rotation.y = rotationY;
+                currentModel.rotation.z = rotationZ;
+            }
+            
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start prompt
+        document.getElementById('start-btn').addEventListener('click', async () => {
+            document.getElementById('start-prompt').classList.add('hidden');
+            await toggleGyroscope();
+        });
+
+        // Gyro toggle button
+        gyroBtn.addEventListener('click', toggleGyroscope);
+
+        // Reset button
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            rotationX = 0;
+            rotationY = 0;
+            rotationZ = 0;
+            
+            if (currentModel) {
+                currentModel.rotation.set(0, 0, 0);
+            }
+            
+            camera.position.set(0, 0, 50);
+            controls.reset();
+        });
+    </script>
+</body>
+</html>
