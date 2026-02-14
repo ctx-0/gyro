@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Gyroscope Sensor Demo</title>
+    <title>Sensor API Demo</title>
     <style>
         * {
             margin: 0;
@@ -24,12 +24,18 @@
         }
         #controls {
             position: fixed;
-            bottom: 40px;
+            bottom: 30px;
             left: 50%;
             transform: translateX(-50%);
             display: flex;
-            gap: 8px;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
             z-index: 100;
+        }
+        .btn-row {
+            display: flex;
+            gap: 8px;
             padding: 6px;
             background: rgba(0,0,0,0.4);
             border-radius: 20px;
@@ -57,6 +63,31 @@
         .btn.active {
             background: rgba(255,255,255,0.12);
             border-color: rgba(255,255,255,0.25);
+            color: #fff;
+        }
+        .mode-selector {
+            display: flex;
+            gap: 4px;
+            padding: 4px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            backdrop-filter: blur(8px);
+        }
+        .mode-btn {
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: none;
+            background: transparent;
+            color: rgba(255,255,255,0.4);
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .mode-btn.active {
+            background: rgba(255,255,255,0.15);
             color: #fff;
         }
         #sensor-overlay {
@@ -164,22 +195,28 @@
     <div id="sensor-overlay">
         <div id="sensor-status">sensor: standby</div>
         <div id="sensor-data">
-            <span class="axis-label">x</span> <span id="val-x">0.00</span> rad/s<br>
-            <span class="axis-label y">y</span> <span id="val-y">0.00</span> rad/s<br>
-            <span class="axis-label z">z</span> <span id="val-z">0.00</span> rad/s
+            <span class="axis-label">x</span> <span id="val-x">0.00</span><br>
+            <span class="axis-label y">y</span> <span id="val-y">0.00</span><br>
+            <span class="axis-label z">z</span> <span id="val-z">0.00</span>
         </div>
     </div>
     
     <div id="loading">loading</div>
     
     <div id="controls">
-        <button class="btn active" id="gyroBtn">📡</button>
-        <button class="btn" id="resetBtn">↺</button>
+        <div class="mode-selector">
+            <button class="mode-btn active" id="modeGyro">Gyro</button>
+            <button class="mode-btn" id="modeAbs">Absolute</button>
+        </div>
+        <div class="btn-row">
+            <button class="btn active" id="sensorBtn">📡</button>
+            <button class="btn" id="resetBtn">↺</button>
+        </div>
     </div>
     
     <div id="start-prompt">
-        <h1>Gyroscope Sensor Demo</h1>
-        <p>Uses the Generic Sensor API to control 3D rotation with device movement</p>
+        <h1>Sensor API Demo</h1>
+        <p>Generic Sensor API with Gyroscope & AbsoluteOrientationSensor</p>
         <button id="start-btn">Enable Sensors</button>
     </div>
 
@@ -213,15 +250,14 @@
         renderer.toneMappingExposure = 1.2;
         document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-        // Controls (fallback)
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
         controls.enableZoom = true;
         controls.enablePan = false;
-        controls.enabled = false; // Disabled until gyro is off
+        controls.enabled = false;
 
-        // Lights - brightened for texture visibility
+        // Lights
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
         scene.add(ambientLight);
 
@@ -240,21 +276,28 @@
 
         // State
         let currentModel = null;
-        let gyroEnabled = false;
-        let gyroscope = null;
+        let sensorEnabled = false;
+        let sensorMode = 'gyro'; // 'gyro' or 'absolute'
+        let activeSensor = null;
         
-        // Sensor values with smoothing
+        // Gyroscope values
         let rotationX = 0, rotationY = 0, rotationZ = 0;
         let smoothX = 0, smoothY = 0, smoothZ = 0;
-        const smoothingFactor = 0.15; // Lower = smoother but more lag
+        const smoothingFactor = 0.15;
+        
+        // Absolute orientation quaternion
+        const targetQuaternion = new THREE.Quaternion();
+        const currentQuaternion = new THREE.Quaternion();
 
         // UI elements
-        const gyroBtn = document.getElementById('gyroBtn');
+        const sensorBtn = document.getElementById('sensorBtn');
         const sensorStatus = document.getElementById('sensor-status');
         const sensorData = document.getElementById('sensor-data');
         const valX = document.getElementById('val-x');
         const valY = document.getElementById('val-y');
         const valZ = document.getElementById('val-z');
+        const modeGyro = document.getElementById('modeGyro');
+        const modeAbs = document.getElementById('modeAbs');
 
         // Load model
         const fbxLoader = new FBXLoader();
@@ -276,8 +319,6 @@
                     if (child.isMesh) {
                         child.castShadow = true;
                         child.receiveShadow = true;
-                        
-                        // Ensure textures are rendered correctly
                         if (child.material) {
                             child.material.needsUpdate = true;
                             if (child.material.map) {
@@ -297,89 +338,151 @@
             }
         );
 
-        // Initialize Gyroscope using Generic Sensor API
+        // Initialize Gyroscope
         async function initGyroscope() {
             if (!('Gyroscope' in window)) {
-                sensorStatus.textContent = 'sensor: not supported';
+                sensorStatus.textContent = 'gyro: not supported';
                 return false;
             }
 
             try {
-                // Request permission if needed (iOS 13+)
-                if (typeof DeviceOrientationEvent !== 'undefined' && 
-                    typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    const permission = await DeviceOrientationEvent.requestPermission();
-                    if (permission !== 'granted') {
-                        sensorStatus.textContent = 'sensor: permission denied';
-                        return false;
-                    }
-                }
-
-                // Create gyroscope with 60Hz frequency
-                gyroscope = new Gyroscope({ frequency: 60 });
+                activeSensor = new Gyroscope({ frequency: 60 });
                 
-                gyroscope.addEventListener('reading', () => {
-                    // Low-pass filter for noise reduction
-                    smoothX += (gyroscope.x - smoothX) * smoothingFactor;
-                    smoothY += (gyroscope.y - smoothY) * smoothingFactor;
-                    smoothZ += (gyroscope.z - smoothZ) * smoothingFactor;
+                activeSensor.addEventListener('reading', () => {
+                    smoothX += (activeSensor.x - smoothX) * smoothingFactor;
+                    smoothY += (activeSensor.y - smoothY) * smoothingFactor;
+                    smoothZ += (activeSensor.z - smoothZ) * smoothingFactor;
                     
-                    // Dead zone - ignore tiny movements
                     const deadZone = 0.02;
                     const dx = Math.abs(smoothX) > deadZone ? smoothX : 0;
                     const dy = Math.abs(smoothY) > deadZone ? smoothY : 0;
                     const dz = Math.abs(smoothZ) > deadZone ? smoothZ : 0;
                     
-                    // Integrate for rotation
                     const sensitivity = 1.5;
                     rotationX += dx * sensitivity;
                     rotationY += dy * sensitivity;
                     rotationZ += dz * sensitivity;
                     
-                    // Update UI
                     valX.textContent = smoothX.toFixed(3);
                     valY.textContent = smoothY.toFixed(3);
                     valZ.textContent = smoothZ.toFixed(3);
                 });
 
-                gyroscope.addEventListener('error', (event) => {
-                    sensorStatus.textContent = `sensor: error (${event.error.name})`;
+                activeSensor.addEventListener('error', (event) => {
+                    sensorStatus.textContent = `gyro: ${event.error.name}`;
                 });
 
-                await gyroscope.start();
+                await activeSensor.start();
+                sensorStatus.textContent = 'gyro: active';
                 return true;
             } catch (error) {
-                sensorStatus.textContent = `sensor: ${error.name}`;
-                console.error('Gyroscope error:', error);
+                sensorStatus.textContent = `gyro: ${error.name}`;
                 return false;
             }
         }
 
-        // Stop gyroscope
-        function stopGyroscope() {
-            if (gyroscope) {
-                gyroscope.stop();
+        // Initialize AbsoluteOrientationSensor
+        async function initAbsoluteOrientation() {
+            if (!('AbsoluteOrientationSensor' in window)) {
+                sensorStatus.textContent = 'absolute: not supported';
+                return false;
+            }
+
+            try {
+                // Request permission if needed
+                if (typeof DeviceOrientationEvent !== 'undefined' && 
+                    typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission !== 'granted') {
+                        sensorStatus.textContent = 'absolute: permission denied';
+                        return false;
+                    }
+                }
+
+                activeSensor = new AbsoluteOrientationSensor({ frequency: 60 });
+                
+                activeSensor.addEventListener('reading', () => {
+                    // Quaternion: [x, y, z, w]
+                    targetQuaternion.fromArray(activeSensor.quaternion);
+                    
+                    // Display euler angles for UI
+                    const euler = new THREE.Euler().setFromQuaternion(targetQuaternion);
+                    valX.textContent = euler.x.toFixed(2);
+                    valY.textContent = euler.y.toFixed(2);
+                    valZ.textContent = euler.z.toFixed(2);
+                });
+
+                activeSensor.addEventListener('error', (event) => {
+                    sensorStatus.textContent = `absolute: ${event.error.name}`;
+                });
+
+                await activeSensor.start();
+                sensorStatus.textContent = 'absolute: active';
+                return true;
+            } catch (error) {
+                sensorStatus.textContent = `absolute: ${error.name}`;
+                return false;
             }
         }
 
-        // Toggle gyroscope
-        async function toggleGyroscope() {
-            if (gyroEnabled) {
-                stopGyroscope();
-                gyroEnabled = false;
-                gyroBtn.classList.remove('active');
-                sensorStatus.textContent = 'sensor: paused';
+        // Stop current sensor
+        function stopSensor() {
+            if (activeSensor) {
+                activeSensor.stop();
+                activeSensor = null;
+            }
+        }
+
+        // Initialize based on mode
+        async function initSensor() {
+            stopSensor();
+            
+            if (sensorMode === 'gyro') {
+                return await initGyroscope();
+            } else {
+                return await initAbsoluteOrientation();
+            }
+        }
+
+        // Toggle sensor
+        async function toggleSensor() {
+            if (sensorEnabled) {
+                stopSensor();
+                sensorEnabled = false;
+                sensorBtn.classList.remove('active');
+                sensorStatus.textContent = `${sensorMode}: paused`;
                 sensorData.classList.remove('active');
                 controls.enabled = true;
             } else {
-                const success = await initGyroscope();
+                const success = await initSensor();
                 if (success) {
-                    gyroEnabled = true;
-                    gyroBtn.classList.add('active');
-                    sensorStatus.textContent = 'sensor: active';
+                    sensorEnabled = true;
+                    sensorBtn.classList.add('active');
                     sensorData.classList.add('active');
                     controls.enabled = false;
                 }
+            }
+        }
+
+        // Switch mode
+        async function switchMode(mode) {
+            if (mode === sensorMode) return;
+            
+            sensorMode = mode;
+            
+            // Update UI
+            modeGyro.classList.toggle('active', mode === 'gyro');
+            modeAbs.classList.toggle('active', mode === 'absolute');
+            
+            // Reset rotation values
+            rotationX = rotationY = rotationZ = 0;
+            smoothX = smoothY = smoothZ = 0;
+            
+            // Restart sensor if active
+            if (sensorEnabled) {
+                await initSensor();
+            } else {
+                sensorStatus.textContent = `${mode}: standby`;
             }
         }
 
@@ -387,11 +490,17 @@
         function animate() {
             requestAnimationFrame(animate);
             
-            if (currentModel && gyroEnabled) {
-                // Apply gyroscope rotation to model
-                currentModel.rotation.x = rotationX;
-                currentModel.rotation.y = rotationY;
-                currentModel.rotation.z = rotationZ;
+            if (currentModel && sensorEnabled) {
+                if (sensorMode === 'gyro') {
+                    // Gyroscope: apply integrated rotation
+                    currentModel.rotation.x = rotationX;
+                    currentModel.rotation.y = rotationY;
+                    currentModel.rotation.z = rotationZ;
+                } else {
+                    // Absolute: smooth quaternion interpolation
+                    currentQuaternion.slerp(targetQuaternion, 0.15);
+                    currentModel.quaternion.copy(currentQuaternion);
+                }
             }
             
             controls.update();
@@ -409,20 +518,26 @@
         // Start prompt
         document.getElementById('start-btn').addEventListener('click', async () => {
             document.getElementById('start-prompt').classList.add('hidden');
-            await toggleGyroscope();
+            await toggleSensor();
         });
 
-        // Gyro toggle button
-        gyroBtn.addEventListener('click', toggleGyroscope);
+        // Sensor toggle
+        sensorBtn.addEventListener('click', toggleSensor);
 
-        // Reset button
+        // Mode switches
+        modeGyro.addEventListener('click', () => switchMode('gyro'));
+        modeAbs.addEventListener('click', () => switchMode('absolute'));
+
+        // Reset
         document.getElementById('resetBtn').addEventListener('click', () => {
-            rotationX = 0;
-            rotationY = 0;
-            rotationZ = 0;
+            rotationX = rotationY = rotationZ = 0;
+            smoothX = smoothY = smoothZ = 0;
+            targetQuaternion.set(0, 0, 0, 1);
+            currentQuaternion.set(0, 0, 0, 1);
             
             if (currentModel) {
                 currentModel.rotation.set(0, 0, 0);
+                currentModel.quaternion.set(0, 0, 0, 1);
             }
             
             camera.position.set(0, 0, 50);
